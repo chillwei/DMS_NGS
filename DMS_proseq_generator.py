@@ -101,6 +101,7 @@ def single_aa_replacement(seq, aa_list, start, end):
     
 
 # profile the seq in NGS with the DMS designed seq to calculate the coverage of library diversity
+# NOTE this function only finds whether the mutation exsit but not the exactly full protein sequence
 def DMSlib_seq_profiling( NGS_proseq_list , DMS_proseq_list ):
 
     seq_not_capture = []
@@ -135,48 +136,150 @@ def DMSlib_seq_profiling( NGS_proseq_list , DMS_proseq_list ):
 
 
   # function to pull out the mutation information and convert it into a dataframe
-def extract_mut_info(DMS_df):
+def extract_mut_info(DMS_df, wtseq):
       df = DMS_df.copy()
       mut_loc_list = []
       mut_aa_list= []
       mut_type_list = []
-
+      Proseq_list = []
+      Proseqlen_list = []
       
       for idx, row in DMS_df.iterrows():
           mut_ID = row['ID']
           #mut_ID_list.append(mut_ID)
           DMS_seq = row['oligo_aa']
           mut_type = mut_ID.split('_')[1][:3]
-         # annotate mutation type
+          # annotate mutation type
           mut_type_list.append(mut_type)
-          
+           
           mut_loc = re.findall(r'\d+', mut_ID.split('_')[2])
-          mut_aa = mut_ID.split('_')[2][-3:]
           mut_loc_list.append(mut_loc[0])
-          mut_aa_list.append(mut_aa)
+          
+          if mut_type == 'Del':
+              del_aa = mut_ID.split('_')[2][:3]
+              mut_aa_list.append(del_aa)
+          
+          else:
+              mut_aa = mut_ID.split('_')[2][-3:]
+              mut_aa_list.append(mut_aa)
+          
+          # recover full length of protein sequence for further DMS and NGS profiling
+          mut_fragloc = re.findall(r'\d+', mut_ID.split('_')[1])
+          mut_fragstart = int(mut_fragloc[0])
+          mut_fragend = int(mut_fragloc[1])
+          Proseq = wtseq[: (mut_fragstart-2)] + DMS_seq + wtseq[(mut_fragend +1) :]
+          Proseq_list.append(Proseq)
+          Proseqlen_list.append(len(Proseq))
 
     # Convert 3-letter abbreviations to single-letter abbreviations and join them
       #mut_aa_listv2 = [three_to_one[aa] for aa in mut_aa_list]
+      df['Proseq'] = Proseq_list
+      df['Proseq_len'] = Proseqlen_list
       df['mut_type'] = mut_type_list
       df['mut_aa'] = mut_aa_list
       df['mut_loc'] = mut_loc_list
+      
 
       return df
          
          
          
+# profile the seq in NGS with the DMS designed seq to calculate the coverage of library diversity
+def NGS_DMS_capturedseq( NGS_proseq_list , DMS_proseq_list ):
+
+    seq_capture = []
+    #n = 0
+    i = 0
+    #Add 'HH' at the end of the seq
+
+    # find the extra seq in the dms oligos
+    for proseqA in DMS_proseq_list:
+        #found = False
+        # Iterate through listB
+        for proseqB in NGS_proseq_list:
+            # Check if stringA is a substring of stringB
+            if proseqA in proseqB:
+         #       found = True
+                i +=1
+                seq_capture.append(proseqB)
+                #n+=1
+                #print(found,n)
+                #break
+        # If stringA is not found in any stringB, append it to strings_only_in_listA
+        
+            #print('not found', proseqA,i)
+            
+    
+    
+    # Print the strings that only exist in listA
+    print("How many seqs that is  captured in DMS NGS lib :",i)
+
+    return seq_capture     
+
+
+def _convert_DMSoligo2aa(df):
+    Geneaa_list = []
+    Geneaa_df = df.copy()
+    for idx, row in df.iterrows():
+        DNAseq = row['seq']
+        DNAseqBsaI = DNAseq.replace('GGTCTC','@').replace('GAGACC','@')
+        if DNAseqBsaI.count('@') != 2:
+            print('Multiple BsaI found. Check the sequence manually ')
+            print('ID:' + row['ID'])
+            print('Sequence' + DNAseq)
+        Genechunk = DNAseqBsaI.split('@')[1][2:-2]
+        Gene_aa = Seq(Genechunk).translate()
+        Geneaa_list.append(str(Gene_aa))
+    
+
+    Geneaa_df['oligo_aa'] = Geneaa_list
+    return Geneaa_df
          
-         
-         
-         
 
 
+# dms_aa: Define all possible amino acids (adjust as needed)
+# pass all possible amino acid designed in dms library and the dataframe generated above which represents counts of each unique variant seqinto the following function. Note: df has to be grouped by len for analysis.
+
+def _missing_aa_heatmap(df, aa_list,mut_type, proseqlen):
+
+    # Initialize a dictionary to hold the frequency data
+    df2 = df[df['mut_type'] == mut_type]
+    aa_matrix = {aa: [0]*proseqlen for aa in aa_list}
+    # Calculate the frequency of each amino acid at each position
+    for index, row in df2.iterrows():
+        miss_aa = row['mut_aa']
+        miss_loc = row['mut_loc']
+
+        aa_matrix[miss_aa][int(miss_loc)] = 1
 
 
+    # Convert the frequency matrix to a DataFrame for easier plotting
+    aa_matrix_df = pd.DataFrame(aa_matrix)
+
+    transposed_aa_matrix_df = aa_matrix_df.transpose()
+    return transposed_aa_matrix_df
 
 
+def _aa_distribution_heatmap(df, aa_list,mut_type, proseqlen):
+
+    # Initialize a dictionary to hold the frequency data
+    df2 = df[df['mut_type'] == mut_type]
+    aa_matrix = {aa: [0]* (proseqlen + 1) for aa in aa_list}
+    # Calculate the frequency of each amino acid at each position
+    for index, row in df2.iterrows():
+        mutaa = row['mut_aa']
+        mutloc = row['mut_loc']
+        mut_count = row['count']
+        
+
+        aa_matrix[mutaa][int(mutloc)] = mut_count
 
 
+    # Convert the frequency matrix to a DataFrame for easier plotting
+    aa_matrix_df = pd.DataFrame(aa_matrix).drop(index= 0)
+
+    transposed_aa_matrix_df = aa_matrix_df.transpose()
+    return transposed_aa_matrix_df
 
 
 
