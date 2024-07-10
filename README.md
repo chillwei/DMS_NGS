@@ -11,7 +11,9 @@ see link: https://github.com/OpenGene/fastp
 run find-variant_QW.py in terminal
 
 change variables in find-variant_QW.py based on the adatpor sequence for NGS and the merged fastq file name.
+
 line 113 - 115
+
     if __name__ == "__main__":
         adapters = Adapters("GGCGCGGTGTTAAAT", "CATCATCACCATCACCAT" )
         fq_1 = "smurfp_ngs_merge.fq.gz"
