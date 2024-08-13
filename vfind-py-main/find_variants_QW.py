@@ -105,7 +105,7 @@ def find_variants(
     peptides_df = pd.DataFrame.from_dict({"Proseq": list(peptides.keys()), "count": list(peptides.values())})
 
     if save_path:
-        peptides_df.to_cvs(save_path)
+        peptides_df.to_csv(save_path)
         
 
     return peptides_df
