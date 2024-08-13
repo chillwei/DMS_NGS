@@ -21,4 +21,4 @@ line 119: output as a .csv file, change the filename as needed
         #fq_2 = "30-982598147/17L_R2_clean.fq.gz"
         
         start = time.perf_counter()
-        find_variants(adapters, fq_1, "filtered_smurfp.csv")
+        find_variants(adapters, fq_1, save_path = "filtered_smurfp.csv")
